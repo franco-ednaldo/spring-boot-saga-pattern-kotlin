@@ -1,0 +1,90 @@
+version: '3.1'
+services:
+    commun.database.mongo:
+        image: mongo:latest
+        container_name: commun.database.mongo
+        command: mongod --port 37017 --maxConns 10000
+        volumes:
+            - ~/mongodb:/data/db
+        ports:
+            - "27017:37017"
+        networks:
+            - order-service
+
+    commun.message.kafka.zookeeper:
+        image: 'bitnami/zookeeper:latest'
+        hostname: commun.message.kafka.zookeeper
+        container_name: commun.message.kafka.zookeeper
+        restart: always
+        ports:
+            - "2181:2181"
+        environment:
+            ALLOW_ANONYMOUS_LOGIN: 'yes'
+        networks:
+            - order-service
+
+    commun.message.kafka:
+        image: bitnami/kafka:2.8.1-debian-10-r18
+        hostname: commun.message.kafka
+        container_name: commun.message.kafka
+        depends_on:
+            - commun.message.kafka.zookeeper
+        restart: always
+        ports:
+            - "9092:9092"
+            - "29092:29092"
+        environment:
+            KAFKA_BROKER_ID: 1
+            KAFKA_CFG_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+            KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://commun.message.kafka:29092,PLAINTEXT_HOST://localhost:9092
+            KAFKA_CFG_ZOOKEEPER_CONNECT: commun.message.kafka.zookeeper:2181
+            ALLOW_PLAINTEXT_LISTENER: 'yes'
+            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+            KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://commun.message.kafka:29092,PLAINTEXT_HOST://localhost:9092
+
+            KAFKA_METRIC_REPORTERS: io.confluent.metrics.reporter.ConfluentMetricsReporter
+            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+            KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+            KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 1
+            CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: commun.message.kafka:29092
+            CONFLUENT_METRICS_REPORTER_ZOOKEEPER_CONNECT: commun.message.kafka.zookeeper:2181
+            CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS: 1
+            CONFLUENT_METRICS_ENABLE: 'true'
+            CONFLUENT_SUPPORT_CUSTOMER_ID: 'anonymous'
+        networks:
+            - order-service
+
+    commun.message.kafka.rest-proxy:
+        image: confluentinc/cp-kafka-rest:5.4.1
+        container_name: commun.message.kafka.rest-proxy
+        hostname: commun.message.kafka.rest-proxy
+        restart: always
+        environment:
+            KAFKA_REST_HOST_NAME: commun.message.kafka.rest-proxy
+            KAFKA_REST_BOOTSTRAP_SERVERS: commun.message.kafka:29092
+            KAFKA_REST_LISTENERS: http://0.0.0.0:8082
+        ports:
+            - "4002:8082"
+        depends_on:
+            - commun.message.kafka
+        networks:
+            - order-service
+
+    commum.message.kafka-ui:
+        image: provectuslabs/kafka-ui:latest
+        container_name: commum.message.kafka-ui
+        hostname: commum.message.kafka-ui
+        restart: always
+        depends_on:
+            - commun.message.kafka
+        ports:
+            - "4033:8080"
+        environment:
+            KAFKA_CLUSTERS_0_NAME: local
+            KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: commun.message.kafka:29092
+        networks:
+            - order-service
+
+networks:
+    order-service:
+      driver: bridge
